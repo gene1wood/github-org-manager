@@ -3,10 +3,12 @@
 
 import logging
 import agithub.GitHub  # pip install agithub
-
+import json
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+DRY_RUN = True
 
 
 def is_matching(config, message):
@@ -20,10 +22,16 @@ def is_matching(config, message):
     plugin_enabled = True
     if not plugin_enabled:
         return False
+    # TODO : Switch to identifying a MemberEvent using
+    # request.headers.get('X-GitHub-Event')
+    # which will require changing the message object schema or the is_matching
+    # and act argument list
     if ('action' in message and message['action'] == 'added'
             and 'repository' in message):
         # MemberEvent
         # https://developer.github.com/v3/activity/events/types/#memberevent
+        if DRY_RUN:
+            logger.debug(json.dumps(message))
         if ('member' in message and 'sender' in message
                 and message['member']['login'] == message['sender']['login']):
             # The user added themselves as a collaborator to a repository
@@ -52,11 +60,13 @@ def is_matching(config, message):
             # Until GitHub creates a webhook indicating a repo transfer has
             # occurred, this corner case will be a problem due to this plugin.
             logger.info(
-                "Detected a GitHub MemberEvent webhook with a sender and "
+                "{dryrun}Detected a GitHub MemberEvent webhook with a sender and "
                 "member login of '{login}' indicating either that {repo} is a "
                 "repo, newly transferred into the organization, or an org "
-                "owner has added themselves as a collaborator to the existing"
-                "organization repo {repo}".format(
+                "owner has added themselves as a collaborator to the existing "
+                "organization repo {repo}, or that org member {login} has "
+                "created a new repo {repo}".format(
+                    dryrun="DRYRUN : " if DRY_RUN else "",
                     login=message['member']['login'],
                     repo=message['repository']['full_name']))
             return True
@@ -71,6 +81,8 @@ def act(config, message):
     :param message:
     :return:
     """
+    if DRY_RUN:
+        return
     repo_full_name = message['repository']['full_name']
     owner = message['repository']['owner']['login']
     repo = message['repository']['name']
